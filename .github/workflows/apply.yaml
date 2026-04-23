@@ -37,7 +37,7 @@ jobs:
         uses: Jumbo810/Upload_Github_Artifacts_TO_GDrive@v2.3.3
         with:
           credentials: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}
-          target: ${{ env.FINAL_ZIP_PATH }}
+          target: "trackright-Automation-Test-results-*.zip"
           parent_folder_id: ${{ secrets.GDRIVE_FOLDER_ID }}
           owner: jonathan.paul@gmail.com
           override: false
