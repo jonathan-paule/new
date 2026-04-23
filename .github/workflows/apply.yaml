@@ -39,6 +39,5 @@ jobs:
           credentials: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}
           target: "trackright-Automation-Test-results-*.zip"
           parent_folder_id: ${{ secrets.GDRIVE_FOLDER_ID }}
-          owner: jonathan.paul@gmail.com
           override: false
           
