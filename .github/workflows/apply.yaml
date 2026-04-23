@@ -39,6 +39,5 @@ jobs:
           credentials: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}
           target: ${{ env.FINAL_ZIP_PATH }}
           parent_folder_id: ${{ secrets.GDRIVE_FOLDER_ID }}
-          owner: jonathanpaul.waila@gmail.com
           override: false
           
