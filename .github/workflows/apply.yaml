@@ -38,4 +38,4 @@ jobs:
         with:
           credentials: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}
           file_path: ${{ env.FINAL_ZIP_PATH }}
-          folder_id: ${{ secrets.GDRIVE_FOLDER_ID }}
+          parent_folder_id: ${{ secrets.GDRIVE_FOLDER_ID }}
