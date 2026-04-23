@@ -11,7 +11,7 @@ jobs:
 
     env:
       # Replace 'your-file-name.zip' with the actual name of the zip file in your repo
-      FINAL_ZIP_PATH: "trackright.zip"
+      FINAL_ZIP_PATH: "trackright-Automation-Test-results-16-Mar-2026-12-48PM.zip"
 
     steps:
       - name: Checkout Repository
