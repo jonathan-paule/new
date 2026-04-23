@@ -34,7 +34,7 @@ jobs:
           }
 
       - name: Upload to Google Drive
-        uses: Jumbo810/Upload_Github_Artifacts_TO_GDrive@v2.3.4
+        uses: Jumbo810/Upload_Github_Artifacts_TO_GDrive@v2.3.3
         with:
           service_account_key: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}
           file_path: ${{ env.FINAL_ZIP_PATH }}
