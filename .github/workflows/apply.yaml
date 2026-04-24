@@ -16,38 +16,26 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: |
-          pip install google-auth google-api-python-client
-
       - name: Verify File Existence
         shell: pwsh
         run: |
           if (Test-Path $env:FINAL_ZIP_PATH) {
             Write-Host "File found: $env:FINAL_ZIP_PATH"
           } else {
-            Write-Error "File not found at $env:FINAL_ZIP_PATH. Please check the file name."
+            Write-Error "File not found at $env:FINAL_ZIP_PATH."
             exit 1
           }
 
-      # ── Hand off the ZIP to the upload job ────────────────────────────────
-      - name: Upload ZIP artifact for Drive job
+      - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
         with:
           name: drive-upload-zip
           path: ${{ env.FINAL_ZIP_PATH }}
 
-  # ── Job 2: Ubuntu — upload to Google Drive ───────────────────────────────
+  # ── Job 2: Ubuntu — upload and TRANSFER OWNERSHIP ────────────────────────
   upload-to-drive:
     runs-on: ubuntu-latest
     needs: verify-zip
-    if: ${{ always() && needs.verify-zip.result != 'cancelled' }}
-
     steps:
       - name: Download ZIP from Windows job
         uses: actions/download-artifact@v4
@@ -55,21 +43,74 @@ jobs:
           name: drive-upload-zip
           path: ./output
 
-      - name: Get ZIP filename
-        id: zipname
-        run: |
-          FILE=$(ls ./output/*.zip 2>/dev/null | head -1)
-          if [ -z "$FILE" ]; then
-            echo "No ZIP file found, exiting."
-            exit 1
-          fi
-          echo "FILE=$FILE" >> $GITHUB_OUTPUT
-
-      - name: Upload to Google Drive
-        uses: adityak74/google-drive-upload-git-action@main
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          credentials: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}   # base64 encoded JSON
-          filename: ${{ steps.zipname.outputs.FILE }}
-          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
-          owner: jonathanpaul.waila@gmail.com
-          overwrite: "false"
+          python-version: '3.10'
+
+      - name: Install Google API Dependencies
+        run: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
+
+      - name: Execute Upload and Transfer
+        env:
+          GCP_SA_KEY: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}
+          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          TARGET_EMAIL: "jonathanpaul.waila@gmail.com"
+        shell: python
+        run: |
+          import os
+          import json
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+          from google.oauth2 import service_account
+
+          # 1. Setup Auth
+          sa_json = os.environ['GCP_SA_KEY']
+          # Handle potential base64 if your secret is encoded, otherwise load direct
+          try:
+              import base64
+              info = json.loads(base64.b64decode(sa_json))
+          except:
+              info = json.loads(sa_json)
+          
+          creds = service_account.Credentials.from_service_account_info(info)
+          drive_service = build('drive', 'v3', credentials=creds)
+
+          # 2. Find the file in ./output
+          files = [f for f in os.listdir('./output') if f.endswith('.zip')]
+          if not files:
+              raise Exception("No ZIP file found in output directory")
+          file_to_upload = os.path.join('./output', files[0])
+
+          # 3. Upload
+          file_metadata = {
+              'name': files[0],
+              'parents': [os.environ['FOLDER_ID']]
+          }
+          media = MediaFileUpload(file_to_upload, mimetype='application/zip')
+          
+          print(f"Uploading {files[0]}...")
+          uploaded_file = drive_service.files().create(
+              body=file_metadata,
+              media_body=media,
+              fields='id'
+          ).execute()
+          
+          file_id = uploaded_file.get('id')
+          print(f"Upload successful. File ID: {file_id}")
+
+          # 4. Transfer Ownership to bypass 0GB Quota
+          print(f"Transferring ownership to {os.environ['TARGET_EMAIL']}...")
+          permission_metadata = {
+              'type': 'user',
+              'role': 'owner',
+              'emailAddress': os.environ['TARGET_EMAIL']
+          }
+
+          drive_service.permissions().create(
+              fileId=file_id,
+              body=permission_metadata,
+              transferOwnership=True,
+              fields='id'
+          ).execute()
+          print("Ownership transferred. Quota now assigned to user.")
