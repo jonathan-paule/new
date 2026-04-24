@@ -71,4 +71,5 @@ jobs:
           credentials: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}   # base64 encoded JSON
           filename: ${{ steps.zipname.outputs.FILE }}
           folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
+          owner: jonathanpaul.waila@gmail.com
           overwrite: "false"
