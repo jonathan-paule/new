@@ -38,7 +38,8 @@ jobs:
           }
 
       - name: Upload to Google Drive
-        uses: Jumbo810/Upload_Github_Artifacts_TO_GDrive@v2.3.3
+        #uses: Jumbo810/Upload_Github_Artifacts_TO_GDrive@v2.3.3
+        uses: adityak74/google-drive-upload-git-action@main
         with:
           credentials: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}
           target: "trackright-Automation-Test-results-*.zip"
