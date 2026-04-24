@@ -60,15 +60,14 @@ jobs:
         run: |
           import os
           import json
+          import base64
           from googleapiclient.discovery import build
           from googleapiclient.http import MediaFileUpload
           from google.oauth2 import service_account
 
           # 1. Setup Auth
           sa_json = os.environ['GCP_SA_KEY']
-          # Handle potential base64 if your secret is encoded, otherwise load direct
           try:
-              import base64
               info = json.loads(base64.b64decode(sa_json))
           except:
               info = json.loads(sa_json)
@@ -76,41 +75,46 @@ jobs:
           creds = service_account.Credentials.from_service_account_info(info)
           drive_service = build('drive', 'v3', credentials=creds)
 
-          # 2. Find the file in ./output
+          # 2. Find the file
           files = [f for f in os.listdir('./output') if f.endswith('.zip')]
           if not files:
-              raise Exception("No ZIP file found in output directory")
+              raise Exception("No ZIP file found")
           file_to_upload = os.path.join('./output', files[0])
+          folder_id = os.environ['FOLDER_ID']
+          target_email = os.environ['TARGET_EMAIL']
 
-          # 3. Upload
+          # 3. THE WORKAROUND: Create the metadata first WITHOUT the media
+          # This establishes the file in your shared folder where YOU are an owner
           file_metadata = {
               'name': files[0],
-              'parents': [os.environ['FOLDER_ID']]
+              'parents': [folder_id]
           }
-          media = MediaFileUpload(file_to_upload, mimetype='application/zip')
           
-          print(f"Uploading {files[0]}...")
-          uploaded_file = drive_service.files().create(
+          # We use the media_body with 'resumable=True' which often handles 
+          # the quota check differently than multipart for service accounts
+          media = MediaFileUpload(file_to_upload, mimetype='application/zip', resumable=True)
+          
+          print(f"Starting resumable upload for {files[0]}...")
+          request = drive_service.files().create(
               body=file_metadata,
               media_body=media,
               fields='id'
-          ).execute()
+          )
           
-          file_id = uploaded_file.get('id')
+          response = None
+          while response is None:
+              status, response = request.next_chunk()
+              if status:
+                  print(f"Uploaded {int(status.progress() * 100)}%")
+
+          file_id = response.get('id')
           print(f"Upload successful. File ID: {file_id}")
 
-          # 4. Transfer Ownership to bypass 0GB Quota
-          print(f"Transferring ownership to {os.environ['TARGET_EMAIL']}...")
-          permission_metadata = {
-              'type': 'user',
-              'role': 'owner',
-              'emailAddress': os.environ['TARGET_EMAIL']
-          }
-
+          # 4. Transfer Ownership
+          print(f"Transferring ownership to {target_email}...")
           drive_service.permissions().create(
               fileId=file_id,
-              body=permission_metadata,
-              transferOwnership=True,
-              fields='id'
+              body={'type': 'user', 'role': 'owner', 'emailAddress': target_email},
+              transferOwnership=True
           ).execute()
-          print("Ownership transferred. Quota now assigned to user.")
+          print("Done!")
