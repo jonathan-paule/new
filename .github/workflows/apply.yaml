@@ -1,120 +1,60 @@
-name: Upload Zip to Google Drive
+name: Test Rclone Upload to Google Drive
 
-on:
-  push:
-    branches: [ "main" ]
-  workflow_dispatch:
+#on:
+  #workflow_dispatch:    # ← manual trigger for testing
 
 jobs:
-  # ── Job 1: Windows — checkout and verify the ZIP exists ──────────────────
-  verify-zip:
+  upload-test:
     runs-on: windows-latest
-    env:
-      FINAL_ZIP_PATH: "trackright-Automation-Test-results-16-Mar-2026-12-48PM.zip"
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Verify File Existence
+      - name: Install rclone
         shell: pwsh
         run: |
-          if (Test-Path $env:FINAL_ZIP_PATH) {
-            Write-Host "File found: $env:FINAL_ZIP_PATH"
-          } else {
-            Write-Error "File not found at $env:FINAL_ZIP_PATH."
-            exit 1
-          }
+          Invoke-WebRequest -Uri "https://downloads.rclone.org/rclone-current-windows-amd64.zip" -OutFile "rclone.zip"
+          Expand-Archive -Path "rclone.zip" -DestinationPath "rclone_dir" -Force
+          $rcloneExe = Get-ChildItem -Recurse -Filter "rclone.exe" -Path "rclone_dir" | Select-Object -First 1
+          Copy-Item $rcloneExe.FullName -Destination "rclone.exe"
+          echo "✅ rclone installed"
 
-      - name: Upload ZIP artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: drive-upload-zip
-          path: ${{ env.FINAL_ZIP_PATH }}
-
-  # ── Job 2: Ubuntu — upload and TRANSFER OWNERSHIP ────────────────────────
-  upload-to-drive:
-    runs-on: ubuntu-latest
-    needs: verify-zip
-    steps:
-      - name: Download ZIP from Windows job
-        uses: actions/download-artifact@v4
-        with:
-          name: drive-upload-zip
-          path: ./output
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Install Google API Dependencies
-        run: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
-
-      - name: Execute Upload and Transfer
-        env:
-          GCP_SA_KEY: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}
-          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
-          TARGET_EMAIL: "jonathanpaul.waila@gmail.com"
-        shell: python
+      - name: Verify rclone installed
+        shell: bash
         run: |
-          import os
-          import json
-          import base64
-          from googleapiclient.discovery import build
-          from googleapiclient.http import MediaFileUpload
-          from google.oauth2 import service_account
+          ./rclone.exe --version
 
-          # 1. Setup Auth
-          sa_json = os.environ['GCP_SA_KEY']
-          try:
-              info = json.loads(base64.b64decode(sa_json))
-          except:
-              info = json.loads(sa_json)
-          
-          creds = service_account.Credentials.from_service_account_info(info)
-          drive_service = build('drive', 'v3', credentials=creds)
+      - name: Configure rclone
+        shell: bash
+        run: |
+          mkdir -p ~/.config/rclone
+          echo "$RCLONE_CONFIG" > ~/.config/rclone/rclone.conf
+          echo "✅ rclone configured"
+        env:
+          RCLONE_CONFIG: ${{ secrets.RCLONE_CONFIG }}
 
-          # 2. Find the file
-          files = [f for f in os.listdir('./output') if f.endswith('.zip')]
-          if not files:
-              raise Exception("No ZIP file found")
-          file_to_upload = os.path.join('./output', files[0])
-          folder_id = os.environ['FOLDER_ID']
-          target_email = os.environ['TARGET_EMAIL']
+      - name: Verify rclone can connect to Drive
+        shell: bash
+        run: |
+          ./rclone.exe ls gdrive:
+          echo "✅ connected to Google Drive"
 
-          # 3. THE WORKAROUND: Create the metadata first WITHOUT the media
-          # This establishes the file in your shared folder where YOU are an owner
-          file_metadata = {
-              'name': files[0],
-              'parents': [folder_id]
-          }
-          
-          # We use the media_body with 'resumable=True' which often handles 
-          # the quota check differently than multipart for service accounts
-          media = MediaFileUpload(file_to_upload, mimetype='application/zip', resumable=True)
-          
-          print(f"Starting resumable upload for {files[0]}...")
-          request = drive_service.files().create(
-              body=file_metadata,
-              media_body=media,
-              fields='id'
-          )
-          
-          response = None
-          while response is None:
-              status, response = request.next_chunk()
-              if status:
-                  print(f"Uploaded {int(status.progress() * 100)}%")
+      - name: Create folder in Google Drive
+        shell: bash
+        run: |
+          ./rclone.exe mkdir "gdrive:Trackright-test-demo"
+          echo "✅ folder created"
 
-          file_id = response.get('id')
-          print(f"Upload successful. File ID: {file_id}")
+      - name: Upload zip to Google Drive
+        shell: bash
+        run: |
+          echo "Uploading test.zip..."
+          ./rclone.exe copy "test.zip" "gdrive:Trackright-test-demo/"
+          echo "✅ upload complete"
 
-          # 4. Transfer Ownership
-          print(f"Transferring ownership to {target_email}...")
-          drive_service.permissions().create(
-              fileId=file_id,
-              body={'type': 'user', 'role': 'owner', 'emailAddress': target_email},
-              transferOwnership=True
-          ).execute()
-          print("Done!")
+      - name: Verify upload
+        shell: bash
+        run: |
+          echo "Files in Trackright folder:"
+          ./rclone.exe ls "gdrive:Trackright-test-demo/"
