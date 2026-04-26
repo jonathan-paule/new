@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: |
           echo "Uploading test.zip..."
-          ./rclone.exe copy "test.zip" "gdrive:Trackright-test-demo/"
+          ./rclone.exe copy "trackright.zip" "gdrive:Trackright-test-demo/"
           echo "✅ upload complete"
 
       - name: Verify upload
