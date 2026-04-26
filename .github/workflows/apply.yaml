@@ -1,7 +1,7 @@
 name: Test Rclone Upload to Google Drive
 
-#on:
-  #workflow_dispatch:    # ← manual trigger for testing
+on:
+  workflow_dispatch:    # ← manual trigger for testing
 
 jobs:
   upload-test:
